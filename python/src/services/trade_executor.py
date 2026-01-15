@@ -9,7 +9,7 @@ from ..models.user_history import get_user_activity_collection
 from ..interfaces.user import UserActivityInterface, UserPositionInterface
 from ..utils.fetch_data import fetch_data_async
 from ..utils.get_my_balance import get_my_balance_async
-from ..utils.post_order import post_order
+from ..utils.post_order import post_order, execute_market_sell, MIN_ORDER_SIZE_TOKENS
 from ..utils.logger import (
     success, info, warning, header, waiting, clear_line, separator, trade as log_trade, balance as log_balance
 )
@@ -20,6 +20,10 @@ PROXY_WALLET = ENV.PROXY_WALLET
 TRADE_AGGREGATION_ENABLED = ENV.TRADE_AGGREGATION_ENABLED
 TRADE_AGGREGATION_WINDOW_SECONDS = ENV.TRADE_AGGREGATION_WINDOW_SECONDS
 TRADE_AGGREGATION_MIN_TOTAL_USD = 1.0  # Polymarket minimum
+AUTO_SELL_ENABLED = ENV.AUTO_SELL_ENABLED
+AUTO_SELL_PROFIT_THRESHOLD = ENV.AUTO_SELL_PROFIT_THRESHOLD
+AUTO_SELL_CHECK_INTERVAL_SECONDS = ENV.AUTO_SELL_CHECK_INTERVAL_SECONDS
+AUTO_SELL_COOLDOWN_SECONDS = max(30, AUTO_SELL_CHECK_INTERVAL_SECONDS)
 
 is_running = True
 
@@ -30,6 +34,7 @@ AggregatedTrade = Dict[str, Any]
 
 # Buffer for aggregating trades
 trade_aggregation_buffer: Dict[str, AggregatedTrade] = {}
+auto_sell_last_attempt: Dict[str, float] = {}
 
 
 async def read_temp_trades() -> List[TradeWithUser]:
@@ -129,6 +134,81 @@ def get_ready_aggregated_trades() -> List[AggregatedTrade]:
         del trade_aggregation_buffer[key]
     
     return ready
+
+
+def get_position_key(position: Dict[str, Any]) -> Optional[str]:
+    """Build a stable key for a position"""
+    asset = position.get('asset')
+    condition_id = position.get('conditionId')
+    if not asset or not condition_id:
+        return None
+    return f'{condition_id}:{asset}'
+
+
+async def check_auto_sell_positions(clob_client: Any) -> None:
+    """Scan own positions and auto-sell when profit threshold is met"""
+    if not AUTO_SELL_ENABLED:
+        return
+
+    positions_data = await fetch_data_async(f'https://data-api.polymarket.com/positions?user={PROXY_WALLET}')
+    positions = positions_data if isinstance(positions_data, list) else []
+    if not positions:
+        return
+
+    now = time.time()
+    open_keys = set()
+
+    for position in positions:
+        size = position.get('size', 0) or 0
+        if size <= 0:
+            continue
+
+        key = get_position_key(position)
+        if not key:
+            continue
+        open_keys.add(key)
+
+        pnl_percent = position.get('percentPnl', 0) or 0
+        if pnl_percent < AUTO_SELL_PROFIT_THRESHOLD:
+            continue
+
+        last_attempt = auto_sell_last_attempt.get(key, 0)
+        if now - last_attempt < AUTO_SELL_COOLDOWN_SECONDS:
+            continue
+
+        asset = position.get('asset')
+        if not asset:
+            continue
+
+        if size < MIN_ORDER_SIZE_TOKENS:
+            warning(
+                f'Auto-sell skipped: position size ({size:.2f} tokens) below minimum ({MIN_ORDER_SIZE_TOKENS})'
+            )
+            auto_sell_last_attempt[key] = now
+            continue
+
+        title = position.get('title') or position.get('slug') or asset
+        info(
+            f'Auto-sell triggered for {title}: PnL {pnl_percent:.1f}% '
+            f'>= {AUTO_SELL_PROFIT_THRESHOLD:.1f}%'
+        )
+
+        result = await execute_market_sell(
+            clob_client=clob_client,
+            token_id=asset,
+            amount=size,
+            order_book_token_id=asset,
+            log_prefix='[AUTO-SELL] '
+        )
+        auto_sell_last_attempt[key] = now
+
+        if result['remaining'] > 0:
+            warning(f'Auto-sell incomplete for {title}: {result["remaining"]:.2f} tokens left')
+
+    # Clean up entries for positions that no longer exist
+    stale_keys = [key for key in auto_sell_last_attempt.keys() if key not in open_keys]
+    for key in stale_keys:
+        del auto_sell_last_attempt[key]
 
 
 async def do_trading(clob_client: Any, trades: List[TradeWithUser]) -> None:
@@ -271,10 +351,20 @@ async def trade_executor(clob_client: Any) -> None:
             f'Trade aggregation enabled: {TRADE_AGGREGATION_WINDOW_SECONDS}s window, '
             f'${TRADE_AGGREGATION_MIN_TOTAL_USD} minimum'
         )
+    if AUTO_SELL_ENABLED:
+        info(
+            f'Auto-sell enabled: {AUTO_SELL_PROFIT_THRESHOLD:.1f}% threshold, '
+            f'check every {AUTO_SELL_CHECK_INTERVAL_SECONDS}s'
+        )
     
     last_check = time.time()
+    last_auto_sell_check = 0.0
     
     while is_running:
+        if AUTO_SELL_ENABLED and (time.time() - last_auto_sell_check >= AUTO_SELL_CHECK_INTERVAL_SECONDS):
+            await check_auto_sell_positions(clob_client)
+            last_auto_sell_check = time.time()
+
         trades = await read_temp_trades()
         
         if TRADE_AGGREGATION_ENABLED:

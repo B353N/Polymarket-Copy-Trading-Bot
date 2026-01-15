@@ -85,6 +85,14 @@ def validate_numeric_config() -> None:
     if network_retry_limit < 1 or network_retry_limit > 10:
         raise ValueError(f'Invalid NETWORK_RETRY_LIMIT: {os.getenv("NETWORK_RETRY_LIMIT")}. Must be between 1 and 10.')
 
+    auto_sell_threshold = float(os.getenv('AUTO_SELL_PROFIT_THRESHOLD', '80.0'))
+    if auto_sell_threshold < 0:
+        raise ValueError('Invalid AUTO_SELL_PROFIT_THRESHOLD. Must be non-negative.')
+
+    auto_sell_interval = int(os.getenv('AUTO_SELL_CHECK_INTERVAL_SECONDS', '30'))
+    if auto_sell_interval <= 0:
+        raise ValueError('Invalid AUTO_SELL_CHECK_INTERVAL_SECONDS. Must be a positive integer.')
+
 
 def validate_urls() -> None:
     """Validate URL formats"""
@@ -281,6 +289,10 @@ class ENV:
     # Trade aggregation settings
     TRADE_AGGREGATION_ENABLED: bool = os.getenv('TRADE_AGGREGATION_ENABLED', '').lower() == 'true'
     TRADE_AGGREGATION_WINDOW_SECONDS: int = int(os.getenv('TRADE_AGGREGATION_WINDOW_SECONDS', '300'))  # 5 minutes default
+    # Auto-sell settings
+    AUTO_SELL_ENABLED: bool = os.getenv('AUTO_SELL_ENABLED', '').lower() == 'true'
+    AUTO_SELL_PROFIT_THRESHOLD: float = float(os.getenv('AUTO_SELL_PROFIT_THRESHOLD', '80.0'))
+    AUTO_SELL_CHECK_INTERVAL_SECONDS: int = int(os.getenv('AUTO_SELL_CHECK_INTERVAL_SECONDS', '30'))
     MONGO_URI: str = os.getenv('MONGO_URI', '')
     RPC_URL: str = os.getenv('RPC_URL', '')
     USDC_CONTRACT_ADDRESS: str = os.getenv('USDC_CONTRACT_ADDRESS', '')

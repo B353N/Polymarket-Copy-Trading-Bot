@@ -70,6 +70,75 @@ def is_insufficient_balance_or_allowance_error(message: Optional[str]) -> bool:
     return 'not enough balance' in lower or 'allowance' in lower
 
 
+async def execute_market_sell(
+    clob_client: Any,
+    token_id: str,
+    amount: float,
+    order_book_token_id: Optional[str] = None,
+    log_prefix: str = ''
+) -> Dict[str, Any]:
+    """Execute a market sell using best bids"""
+    remaining = amount
+    retry = 0
+    abort_due_to_funds = False
+    book_token = order_book_token_id or token_id
+
+    while remaining > 0 and retry < RETRY_LIMIT:
+        try:
+            order_book = await clob_client.get_order_book(book_token)
+            if not order_book.get('bids') or len(order_book['bids']) == 0:
+                warning(f'{log_prefix}No bids available in order book'.strip())
+                break
+
+            max_price_bid = max(order_book['bids'], key=lambda x: float(x['price']))
+            info(f'{log_prefix}Best bid: {max_price_bid["size"]} @ ${max_price_bid["price"]}'.strip())
+
+            if remaining <= float(max_price_bid['size']):
+                order_args = {
+                    'side': 'SELL',
+                    'tokenID': token_id,
+                    'amount': remaining,
+                    'price': float(max_price_bid['price']),
+                }
+            else:
+                order_args = {
+                    'side': 'SELL',
+                    'tokenID': token_id,
+                    'amount': float(max_price_bid['size']),
+                    'price': float(max_price_bid['price']),
+                }
+
+            signed_order = await clob_client.create_market_order(order_args)
+            resp = await clob_client.post_order(signed_order, 'FOK')
+
+            if resp.get('success') is True:
+                retry = 0
+                order_id = extract_order_id(resp)
+                suffix = f' (order_id: {order_id})' if order_id else ''
+                order_result(True, f'Sold {order_args["amount"]} tokens at ${order_args["price"]}{suffix}')
+                if not order_id:
+                    warning(f'Order response missing order_id: {resp}')
+                remaining -= order_args['amount']
+            else:
+                error_message = extract_order_error(resp)
+                if is_insufficient_balance_or_allowance_error(error_message):
+                    abort_due_to_funds = True
+                    warning(f'Order rejected: {error_message or "Insufficient balance or allowance"}')
+                    warning('Skipping remaining attempts. Top up funds or check allowance before retrying.')
+                    break
+                retry += 1
+                warning(f'Order failed (attempt {retry}/{RETRY_LIMIT}){f" - {error_message}" if error_message else ""}')
+        except Exception as e:
+            retry += 1
+            warning(f'Order error (attempt {retry}/{RETRY_LIMIT}): {e}')
+
+    return {
+        'remaining': remaining,
+        'retry': retry,
+        'abort_due_to_funds': abort_due_to_funds
+    }
+
+
 async def post_order(
     clob_client: Any,
     condition: str,
@@ -98,71 +167,24 @@ async def post_order(
             collection.update_one({'_id': trade['_id']}, {'$set': {'bot': True}})
             return
         
-        retry = 0
-        abort_due_to_funds = False
+        result = await execute_market_sell(
+            clob_client=clob_client,
+            token_id=my_position['asset'],
+            amount=remaining,
+            order_book_token_id=trade.get('asset')
+        )
         
-        while remaining > 0 and retry < RETRY_LIMIT:
-            try:
-                order_book = await clob_client.get_order_book(trade['asset'])
-                if not order_book.get('bids') or len(order_book['bids']) == 0:
-                    warning('No bids available in order book')
-                    collection.update_one({'_id': trade['_id']}, {'$set': {'bot': True}})
-                    break
-                
-                max_price_bid = max(order_book['bids'], key=lambda x: float(x['price']))
-                
-                info(f'Best bid: {max_price_bid["size"]} @ ${max_price_bid["price"]}')
-                
-                if remaining <= float(max_price_bid['size']):
-                    order_args = {
-                        'side': 'SELL',
-                        'tokenID': my_position['asset'],
-                        'amount': remaining,
-                        'price': float(max_price_bid['price']),
-                    }
-                else:
-                    order_args = {
-                        'side': 'SELL',
-                        'tokenID': my_position['asset'],
-                        'amount': float(max_price_bid['size']),
-                        'price': float(max_price_bid['price']),
-                    }
-                
-                signed_order = await clob_client.create_market_order(order_args)
-                resp = await clob_client.post_order(signed_order, 'FOK')
-                
-                if resp.get('success') is True:
-                    retry = 0
-                    order_id = extract_order_id(resp)
-                    suffix = f' (order_id: {order_id})' if order_id else ''
-                    order_result(True, f'Sold {order_args["amount"]} tokens at ${order_args["price"]}{suffix}')
-                    if not order_id:
-                        warning(f'Order response missing order_id: {resp}')
-                    remaining -= order_args['amount']
-                else:
-                    error_message = extract_order_error(resp)
-                    if is_insufficient_balance_or_allowance_error(error_message):
-                        abort_due_to_funds = True
-                        warning(f'Order rejected: {error_message or "Insufficient balance or allowance"}')
-                        warning('Skipping remaining attempts. Top up funds or check allowance before retrying.')
-                        break
-                    retry += 1
-                    warning(f'Order failed (attempt {retry}/{RETRY_LIMIT}){f" - {error_message}" if error_message else ""}')
-            except Exception as e:
-                retry += 1
-                warning(f'Order error (attempt {retry}/{RETRY_LIMIT}): {e}')
-        
-        if abort_due_to_funds:
+        if result['abort_due_to_funds']:
             collection.update_one(
                 {'_id': trade['_id']},
                 {'$set': {'bot': True, 'botExcutedTime': RETRY_LIMIT}}
             )
             return
         
-        if retry >= RETRY_LIMIT:
+        if result['retry'] >= RETRY_LIMIT:
             collection.update_one(
                 {'_id': trade['_id']},
-                {'$set': {'bot': True, 'botExcutedTime': retry}}
+                {'$set': {'bot': True, 'botExcutedTime': result['retry']}}
             )
         else:
             collection.update_one({'_id': trade['_id']}, {'$set': {'bot': True}})

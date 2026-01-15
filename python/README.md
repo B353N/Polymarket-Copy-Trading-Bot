@@ -125,6 +125,9 @@ Create a `.env` file with the following variables:
 | `FETCH_INTERVAL` | Check interval in seconds (default: 1) | `1` |
 | `TRADE_AGGREGATION_ENABLED` | Enable trade aggregation (default: false) | `true` |
 | `TRADE_AGGREGATION_WINDOW_SECONDS` | Aggregation window (default: 30) | `30` |
+| `AUTO_SELL_ENABLED` | Auto-sell positions at profit threshold (default: false) | `true` |
+| `AUTO_SELL_PROFIT_THRESHOLD` | Profit threshold in percent (default: 80) | `80` |
+| `AUTO_SELL_CHECK_INTERVAL_SECONDS` | Auto-sell scan interval in seconds (default: 30) | `30` |
 
 ### Finding Traders
 
@@ -140,6 +143,7 @@ Create a `.env` file with the following variables:
 - **Tiered Multipliers** - Apply different multipliers based on trade size
 - **Position Tracking** - Accurately tracks purchases and sells even after balance changes
 - **Trade Aggregation** - Combines multiple small trades into larger executable orders
+- **Auto-Sell Profit Taking** - Sells your positions when PnL reaches the configured threshold
 - **Real-time Execution** - Monitors trades every second and executes instantly
 - **MongoDB Integration** - Persistent storage of all trades and positions
 - **Price Protection** - Built-in slippage checks to avoid unfavorable fills
