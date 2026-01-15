@@ -21,14 +21,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_non_atp_token_returns_zero() {
-        // Non-ATP tokens should return 0.0 buffer
-        let buffer = get_atp_token_buffer("fake_non_atp_token_12345");
-        assert_eq!(buffer, 0.0, "Non-ATP token should have 0 buffer");
+    fn test_non_tennis_token_returns_zero() {
+        // Non-tennis tokens should return 0.0 buffer
+        let buffer = get_tennis_token_buffer("fake_non_tennis_token_12345");
+        assert_eq!(buffer, 0.0, "Non-tennis token should have 0 buffer");
     }
 
     #[test]
-    fn test_is_atp_market_false_for_unknown() {
-        assert!(!is_atp_market("unknown_token_xyz"));
+    fn test_is_tennis_market_false_for_unknown() {
+        assert!(!is_tennis_token("unknown_token_xyz"));
     }
 }
