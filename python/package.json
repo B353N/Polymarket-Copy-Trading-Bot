@@ -1,0 +1,18 @@
+{
+  "name": "python",
+  "version": "1.0.0",
+  "description": "> Automated copy trading bot for Polymarket that mirrors trades from top performers with intelligent position sizing and real-time execution.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@polymarket/clob-client": "4.22.8"
+  }
+}

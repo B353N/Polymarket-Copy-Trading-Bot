@@ -1,3 +1,22 @@
+Metadata-Version: 2.4
+Name: polymarket-copy-trading-bot
+Version: 1.0.0
+Summary: Automated copy trading bot for Polymarket
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: pymongo>=4.6.0
+Requires-Dist: web3>=6.11.0
+Requires-Dist: httpx>=0.25.0
+Requires-Dist: websockets>=12.0
+Requires-Dist: rich>=13.7.0
+Requires-Dist: colorama>=0.4.6
+Requires-Dist: python-dateutil>=2.8.2
+Requires-Dist: eth-account>=0.9.0
+Requires-Dist: eth-utils>=2.3.0
+Dynamic: license-file
+
 # Polymarket Copy Trading Bot - Python Edition
 
 > Automated copy trading bot for Polymarket that mirrors trades from top performers with intelligent position sizing and real-time execution.
@@ -368,10 +387,7 @@ The Polymarket CLOB (Central Limit Order Book) client is a critical component th
 
 1. **Use the JavaScript SDK via subprocess** (Recommended for now)
    - Install Node.js and the `@polymarket/clob-client` package
-   - This repo includes a bridge at `scripts/clob_bridge.mjs`
-   - Install JS deps with: `npm install` (Node 18+ recommended)
-   - The Python CLOB wrapper calls the bridge for order execution
-   - Optional: set `CLOB_SIGNATURE_TYPE=POLY_PROXY` (or `POLY_GNOSIS_SAFE`) if your proxy wallet is a contract
+   - Create a bridge script that calls the JS SDK from Python
 
 2. **Implement full Python CLOB client**
    - This requires implementing Polymarket's order signing protocol

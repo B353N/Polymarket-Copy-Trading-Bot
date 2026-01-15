@@ -44,6 +44,24 @@ def extract_order_error(response: Any) -> Optional[str]:
     return None
 
 
+def extract_order_id(response: Any) -> Optional[str]:
+    """Extract order ID from order response"""
+    if not response:
+        return None
+    if isinstance(response, dict):
+        # Check common fields
+        for key in ('orderID', 'orderId', 'id', 'order_id'):
+            if key in response and response[key]:
+                return str(response[key])
+        # Look into nested data payloads
+        data = response.get('data')
+        if isinstance(data, dict):
+            for key in ('orderID', 'orderId', 'id', 'order_id'):
+                if key in data and data[key]:
+                    return str(data[key])
+    return None
+
+
 def is_insufficient_balance_or_allowance_error(message: Optional[str]) -> bool:
     """Check if error is related to insufficient balance or allowance"""
     if not message:
@@ -115,7 +133,11 @@ async def post_order(
                 
                 if resp.get('success') is True:
                     retry = 0
-                    order_result(True, f'Sold {order_args["amount"]} tokens at ${order_args["price"]}')
+                    order_id = extract_order_id(resp)
+                    suffix = f' (order_id: {order_id})' if order_id else ''
+                    order_result(True, f'Sold {order_args["amount"]} tokens at ${order_args["price"]}{suffix}')
+                    if not order_id:
+                        warning(f'Order response missing order_id: {resp}')
                     remaining -= order_args['amount']
                 else:
                     error_message = extract_order_error(resp)
@@ -235,10 +257,14 @@ async def post_order(
                     retry = 0
                     tokens_bought = order_args['amount'] / order_args['price']
                     total_bought_tokens += tokens_bought
+                    order_id = extract_order_id(resp)
+                    suffix = f' (order_id: {order_id})' if order_id else ''
                     order_result(
                         True,
-                        f'Bought ${order_args["amount"]:.2f} at ${order_args["price"]} ({tokens_bought:.2f} tokens)'
+                        f'Bought ${order_args["amount"]:.2f} at ${order_args["price"]} ({tokens_bought:.2f} tokens){suffix}'
                     )
+                    if not order_id:
+                        warning(f'Order response missing order_id: {resp}')
                     remaining -= order_args['amount']
                     # Update balance after successful order
                     available_balance -= order_args['amount']

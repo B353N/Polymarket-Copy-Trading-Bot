@@ -5,6 +5,10 @@ import asyncio
 import json
 import websockets
 from typing import List, Dict, Any, Optional
+try:
+    from websockets.legacy.client import WebSocketClientProtocol
+except Exception:  # pragma: no cover - fallback for older websockets versions
+    from websockets.client import WebSocketClientProtocol  # type: ignore
 from ..config.env import ENV
 from ..models.user_history import get_user_activity_collection, get_user_position_collection
 from ..utils.fetch_data import fetch_data_async
@@ -22,7 +26,7 @@ if not USER_ADDRESSES or len(USER_ADDRESSES) == 0:
     raise ValueError('USER_ADDRESSES is not defined or empty')
 
 # WebSocket connection state
-ws: Optional[websockets.client.WebSocketClientProtocol] = None
+ws: Optional[WebSocketClientProtocol] = None
 reconnect_attempts = 0
 MAX_RECONNECT_ATTEMPTS = 10
 RECONNECT_DELAY = 5  # 5 seconds

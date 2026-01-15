@@ -1,0 +1,10 @@
+python-dotenv>=1.0.0
+pymongo>=4.6.0
+web3>=6.11.0
+httpx>=0.25.0
+websockets>=12.0
+rich>=13.7.0
+colorama>=0.4.6
+python-dateutil>=2.8.2
+eth-account>=0.9.0
+eth-utils>=2.3.0
