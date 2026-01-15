@@ -49,7 +49,6 @@ fn get_exchange_address(chain_id: u64, neg_risk: bool) -> Option<&'static str> {
 
 // Pre-allocated common strings to avoid allocations
 const ZERO_STR: &str = "0";
-const FEE_RATE_ZERO: &str = "0";
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -85,6 +84,14 @@ fn build_url_query_1(base: &str, path: &str, param: &str, value: &str) -> String
     url.push('=');
     url.push_str(value);
     url
+}
+
+#[inline]
+fn parse_fee_rate_bps(val: &serde_json::Value) -> Option<i64> {
+    let rate = val.get("fee_rate_bps")?;
+    rate.as_i64()
+        .or_else(|| rate.as_u64().and_then(|v| i64::try_from(v).ok()))
+        .or_else(|| rate.as_str().and_then(|s| s.parse::<i64>().ok()))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -338,6 +345,35 @@ impl RustClobClient {
             return Err(anyhow!("price {} outside allowed range", args.price));
         }
 
+        let fee_rate_bps = if let Some(rate) = args.fee_rate_bps {
+            rate
+        } else if let Some(rate) = market_cache::get_fee_rate_bps(&args.token_id) {
+            rate
+        } else {
+            let url = build_url_query_1(&self.host, "/fee-rate", "token_id", &args.token_id);
+            let resp = self.http.get(&url).header("User-Agent", USER_AGENT).send()?;
+            if !resp.status().is_success() {
+                return Err(anyhow!(
+                    "fee rate fetch failed for token {}: {}",
+                    args.token_id,
+                    resp.status()
+                ));
+            }
+            let val: serde_json::Value = resp.json()?;
+            let fee_rate_bps = parse_fee_rate_bps(&val).ok_or_else(|| {
+                anyhow!("fee_rate_bps missing for token {}", args.token_id)
+            })?;
+            if fee_rate_bps < 0 {
+                return Err(anyhow!(
+                    "fee_rate_bps negative for token {}: {}",
+                    args.token_id,
+                    fee_rate_bps
+                ));
+            }
+            market_cache::global_caches().set_fee_rate_bps(args.token_id.clone(), fee_rate_bps);
+            fee_rate_bps
+        };
+
         let is_fak = args.order_type.as_ref().map_or(true, |t| t.eq_ignore_ascii_case("FAK"));
 
         let round_cfg = round_config(tick)?;
@@ -376,7 +412,7 @@ impl RustClobClient {
             taker_amount: taker_amount_str,
             taker_amount_u256,
             side: side_code,
-            fee_rate_bps: FEE_RATE_ZERO.to_string(),
+            fee_rate_bps: fee_rate_bps.to_string(),
             nonce: nonce_str,
             nonce_u256,
             signer: self.wallet_address_str.clone(),
@@ -707,7 +743,7 @@ fn order_typed_data(chain_id: u64, exchange: &str, data: &OrderData) -> Result<T
             r#"{{"name":"signatureType","type":"uint8"}}"#,
             r#"]}},"primaryType":"Order","#,
             r#""domain":{{"name":"Polymarket CTF Exchange","version":"1","chainId":{},"verifyingContract":"{}"}},"#,
-            r#""message":{{"salt":"{}","maker":"{}","signer":"{}","taker":"{}","tokenId":"{}","makerAmount":"{}","takerAmount":"{}","expiration":"{}","nonce":"{}","feeRateBps":"0","side":{},"signatureType":{}}}}}"#
+            r#""message":{{"salt":"{}","maker":"{}","signer":"{}","taker":"{}","tokenId":"{}","makerAmount":"{}","takerAmount":"{}","expiration":"{}","nonce":"{}","feeRateBps":"{}","side":{},"signatureType":{}}}}}"#
         ),
         chain_id,
         exchange,
@@ -720,6 +756,7 @@ fn order_typed_data(chain_id: u64, exchange: &str, data: &OrderData) -> Result<T
         data.taker_amount_u256,
         data.expiration_u256,
         data.nonce_u256,
+        data.fee_rate_bps,
         data.side,
         data.signature_type,
     );

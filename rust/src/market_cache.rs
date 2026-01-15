@@ -41,6 +41,8 @@ pub struct MarketCaches {
     pub ligue1_tokens: RwLock<FxHashMap<String, ()>>,
     /// Token ID -> live status (for GTD expiry calculation)
     pub live_status: RwLock<FxHashMap<String, bool>>,
+    /// Token ID -> fee rate (bps) from /fee-rate
+    pub fee_rate_bps: RwLock<FxHashMap<String, i64>>,
     /// Last refresh timestamp (Unix seconds)
     pub last_refresh: AtomicU64,
     /// Cache statistics
@@ -66,6 +68,7 @@ impl MarketCaches {
             atp_tokens: RwLock::new(FxHashMap::default()),
             ligue1_tokens: RwLock::new(FxHashMap::default()),
             live_status: RwLock::new(FxHashMap::default()),
+            fee_rate_bps: RwLock::new(FxHashMap::default()),
             last_refresh: AtomicU64::new(0),
             stats: CacheStats::default(),
         }
@@ -222,6 +225,12 @@ impl MarketCaches {
         self.live_status.read().ok()?.get(token_id).copied()
     }
 
+    /// Get fee rate bps for token
+    #[inline]
+    pub fn get_fee_rate_bps(&self, token_id: &str) -> Option<i64> {
+        self.fee_rate_bps.read().ok()?.get(token_id).copied()
+    }
+
     /// Insert neg_risk value for a token (for dynamic updates)
     pub fn set_neg_risk(&self, token_id: String, neg_risk: bool) {
         if let Ok(mut cache) = self.neg_risk.write() {
@@ -233,6 +242,13 @@ impl MarketCaches {
     pub fn set_slug(&self, token_id: String, slug: String) {
         if let Ok(mut cache) = self.slugs.write() {
             cache.insert(token_id, slug);
+        }
+    }
+
+    /// Insert fee rate bps for a token (for dynamic updates)
+    pub fn set_fee_rate_bps(&self, token_id: String, fee_rate_bps: i64) {
+        if let Ok(mut cache) = self.fee_rate_bps.write() {
+            cache.insert(token_id, fee_rate_bps);
         }
     }
 
@@ -401,6 +417,12 @@ pub fn get_is_live(token_id: &str) -> Option<bool> {
     global_caches().get_is_live(token_id)
 }
 
+/// Get fee rate bps for a token (convenience function)
+#[inline]
+pub fn get_fee_rate_bps(token_id: &str) -> Option<i64> {
+    global_caches().get_fee_rate_bps(token_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,6 +450,14 @@ mod tests {
         caches.set_slug("token123".to_string(), "market-slug".to_string());
         assert_eq!(caches.get_slug("token123"), Some("market-slug".to_string()));
         assert_eq!(caches.get_slug("unknown"), None);
+    }
+
+    #[test]
+    fn test_set_and_get_fee_rate() {
+        let caches = MarketCaches::new();
+        caches.set_fee_rate_bps("token123".to_string(), 42);
+        assert_eq!(caches.get_fee_rate_bps("token123"), Some(42));
+        assert_eq!(caches.get_fee_rate_bps("unknown"), None);
     }
 
     #[test]
