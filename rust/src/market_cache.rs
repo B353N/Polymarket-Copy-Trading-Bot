@@ -22,8 +22,8 @@ const LIGUE1_TOKENS_CACHE_PATH: &str = ".ligue1_tokens.json";
 const LIVE_CACHE_PATH: &str = ".live_cache.json";
 
 /// Price buffer adjustments for specialized markets
-const TENNIS_BUFFER: f64 = 0.01;
-const SOCCER_BUFFER: f64 = 0.01;
+const ATP_BUFFER: f64 = 0.01;
+const LIGUE1_BUFFER: f64 = 0.01;
 
 // ============================================================================
 // Cache Data Structures
@@ -36,9 +36,9 @@ pub struct MarketCaches {
     /// Token ID -> market slug
     pub slugs: RwLock<FxHashMap<String, String>>,
     /// Tennis (ATP) token IDs (for price buffer calculation)
-    pub tennis_tokens: RwLock<FxHashMap<String, String>>,
+    pub atp_tokens: RwLock<FxHashMap<String, String>>,
     /// Soccer (Ligue 1) token IDs (for price buffer calculation)
-    pub soccer_tokens: RwLock<FxHashMap<String, ()>>,
+    pub ligue1_tokens: RwLock<FxHashMap<String, ()>>,
     /// Token ID -> live status (for GTD expiry calculation)
     pub live_status: RwLock<FxHashMap<String, bool>>,
     /// Last refresh timestamp (Unix seconds)
@@ -51,8 +51,8 @@ pub struct MarketCaches {
 pub struct CacheStats {
     pub neg_risk_count: AtomicU64,
     pub slug_count: AtomicU64,
-    pub tennis_count: AtomicU64,
-    pub soccer_count: AtomicU64,
+    pub atp_count: AtomicU64,
+    pub ligue1_count: AtomicU64,
     pub live_count: AtomicU64,
     pub refresh_count: AtomicU64,
     pub last_refresh_duration_ms: AtomicU64,
@@ -180,6 +180,18 @@ impl MarketCaches {
         self.ligue1_tokens.read().map(|c| c.contains_key(token_id)).unwrap_or(false)
     }
 
+    /// Check if token is tennis market (alias for ATP)
+    #[inline]
+    pub fn is_tennis_token(&self, token_id: &str) -> bool {
+        self.is_atp_token(token_id)
+    }
+
+    /// Check if token is soccer market (alias for Ligue 1)
+    #[inline]
+    pub fn is_soccer_token(&self, token_id: &str) -> bool {
+        self.is_ligue1_token(token_id)
+    }
+
     /// Get ATP buffer for token (0.01 if ATP, 0.0 otherwise)
     #[inline]
     pub fn get_atp_buffer(&self, token_id: &str) -> f64 {
@@ -190,6 +202,18 @@ impl MarketCaches {
     #[inline]
     pub fn get_ligue1_buffer(&self, token_id: &str) -> f64 {
         if self.is_ligue1_token(token_id) { LIGUE1_BUFFER } else { 0.0 }
+    }
+
+    /// Get tennis buffer for token (alias for ATP)
+    #[inline]
+    pub fn get_tennis_buffer(&self, token_id: &str) -> f64 {
+        self.get_atp_buffer(token_id)
+    }
+
+    /// Get soccer buffer for token (alias for Ligue 1)
+    #[inline]
+    pub fn get_soccer_buffer(&self, token_id: &str) -> f64 {
+        self.get_ligue1_buffer(token_id)
     }
 
     /// Get live status for token (for GTD expiry calculation)
@@ -333,6 +357,30 @@ pub fn get_atp_token_buffer(token_id: &str) -> f64 {
 #[inline]
 pub fn get_ligue1_token_buffer(token_id: &str) -> f64 {
     global_caches().get_ligue1_buffer(token_id)
+}
+
+/// Get tennis buffer for a token (convenience function)
+#[inline]
+pub fn get_tennis_token_buffer(token_id: &str) -> f64 {
+    global_caches().get_tennis_buffer(token_id)
+}
+
+/// Get soccer buffer for a token (convenience function)
+#[inline]
+pub fn get_soccer_token_buffer(token_id: &str) -> f64 {
+    global_caches().get_soccer_buffer(token_id)
+}
+
+/// Check if token is tennis (convenience function)
+#[inline]
+pub fn is_tennis_token(token_id: &str) -> bool {
+    global_caches().is_tennis_token(token_id)
+}
+
+/// Check if token is soccer (convenience function)
+#[inline]
+pub fn is_soccer_token(token_id: &str) -> bool {
+    global_caches().is_soccer_token(token_id)
 }
 
 /// Get slug for a token (convenience function)

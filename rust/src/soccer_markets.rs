@@ -22,12 +22,12 @@ mod tests {
 
     #[test]
     fn test_non_ligue1_token_returns_zero() {
-        let buffer = get_ligue1_token_buffer("fake_non_ligue1_token_12345");
+        let buffer = get_soccer_token_buffer("fake_non_ligue1_token_12345");
         assert_eq!(buffer, 0.0, "Non-Ligue 1 token should have 0 buffer");
     }
 
     #[test]
     fn test_is_ligue1_market_false_for_unknown() {
-        assert!(!is_ligue1_market("unknown_token_xyz"));
+        assert!(!is_soccer_token("unknown_token_xyz"));
     }
 }

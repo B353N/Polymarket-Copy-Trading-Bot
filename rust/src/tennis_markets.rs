@@ -23,12 +23,12 @@ mod tests {
     #[test]
     fn test_non_atp_token_returns_zero() {
         // Non-ATP tokens should return 0.0 buffer
-        let buffer = get_atp_token_buffer("fake_non_atp_token_12345");
+        let buffer = get_tennis_token_buffer("fake_non_atp_token_12345");
         assert_eq!(buffer, 0.0, "Non-ATP token should have 0 buffer");
     }
 
     #[test]
     fn test_is_atp_market_false_for_unknown() {
-        assert!(!is_atp_market("unknown_token_xyz"));
+        assert!(!is_tennis_token("unknown_token_xyz"));
     }
 }
